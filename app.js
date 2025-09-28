@@ -149,11 +149,7 @@ function generateTablePreview(data) {
 }
 
 function visualizeData() {
-    // Ensure tfvis visor is open and ready
-    if (typeof tfvis === 'undefined') {
-        console.error('tfvis is not loaded');
-        return;
-    }
+    console.log('Starting data visualization...');
     
     const survivalBySex = {};
     const survivalByPclass = {};
@@ -170,72 +166,102 @@ function visualizeData() {
         if (row.Survived === '1') survivalByPclass[pclass].survived++;
     });
     
-    // Convert to proper format for tfvis
-    const sexData = {
-        values: Object.entries(survivalBySex).map(([sex, stats]) => ({
-            x: sex,
-            y: (stats.survived / stats.total) * 100
-        }))
-    };
+    console.log('Survival by Sex:', survivalBySex);
+    console.log('Survival by Pclass:', survivalByPclass);
     
-    const pclassData = {
-        values: Object.entries(survivalByPclass).map(([pclass, stats]) => ({
-            x: pclass,
-            y: (stats.survived / stats.total) * 100
-        }))
-    };
+    // Create visualization data
+    const sexData = Object.entries(survivalBySex).map(([sex, stats]) => ({
+        x: sex,
+        y: (stats.survived / stats.total) * 100
+    }));
     
-    console.log('Sex data for visualization:', sexData);
-    console.log('Pclass data for visualization:', pclassData);
+    const pclassData = Object.entries(survivalByPclass).map(([pclass, stats]) => ({
+        x: pclass,
+        y: (stats.survived / stats.total) * 100
+    }));
     
-    // Render charts with error handling
+    console.log('Sex data for chart:', sexData);
+    console.log('Pclass data for chart:', pclassData);
+    
+    // Create HTML charts as fallback since tfjs-vis might not be working
+    createHTMLCharts(sexData, pclassData);
+    
+    // Try tfjs-vis with better error handling
     try {
-        // Open the visor if it's not already open
-        const visor = tfvis.visor();
-        if (!visor.isOpen()) {
-            visor.open();
+        if (typeof tfvis !== 'undefined') {
+            console.log('tfvis is available, attempting to render charts...');
+            
+            // Ensure visor is open
+            const visor = tfvis.visor();
+            if (!visor.isOpen()) {
+                visor.open();
+                console.log('Opened tfjs-vis visor');
+            }
+            
+            // Render charts
+            tfvis.render.barchart(
+                { name: 'Survival Rate by Sex', tab: 'Data Inspection' },
+                [{ values: sexData }],
+                { 
+                    xLabel: 'Sex', 
+                    yLabel: 'Survival Rate (%)',
+                    yAxisDomain: [0, 100]
+                }
+            );
+            
+            tfvis.render.barchart(
+                { name: 'Survival Rate by Passenger Class', tab: 'Data Inspection' },
+                [{ values: pclassData }],
+                { 
+                    xLabel: 'Passenger Class', 
+                    yLabel: 'Survival Rate (%)',
+                    yAxisDomain: [0, 100]
+                }
+            );
+            
+            console.log('tfjs-vis charts rendered successfully');
+        } else {
+            console.warn('tfvis is not available, using HTML charts only');
         }
-        
-        // Clear any existing charts in these surfaces
-        tfvis.render.barchart(
-            { name: 'Survival Rate by Sex', tab: 'Data Inspection' },
-            sexData,
-            { 
-                xLabel: 'Sex', 
-                yLabel: 'Survival Rate (%)',
-                yAxisDomain: [0, 100]
-            }
-        );
-        
-        tfvis.render.barchart(
-            { name: 'Survival Rate by Passenger Class', tab: 'Data Inspection' },
-            pclassData,
-            { 
-                xLabel: 'Passenger Class', 
-                yLabel: 'Survival Rate (%)',
-                yAxisDomain: [0, 100]
-            }
-        );
-        
     } catch (error) {
-        console.error('Error rendering charts:', error);
-        // Fallback: display data as text
-        document.getElementById('data-info').innerHTML += `
-            <h3>Visualization Data (Charts failed to load)</h3>
-            <p><strong>Survival by Sex:</strong></p>
-            <ul>
-                ${Object.entries(survivalBySex).map(([sex, stats]) => 
-                    `<li>${sex}: ${((stats.survived / stats.total) * 100).toFixed(1)}%</li>`
-                ).join('')}
-            </ul>
-            <p><strong>Survival by Passenger Class:</strong></p>
-            <ul>
-                ${Object.entries(survivalByPclass).map(([pclass, stats]) => 
-                    `<li>${pclass}: ${((stats.survived / stats.total) * 100).toFixed(1)}%</li>`
-                ).join('')}
-            </ul>
-        `;
+        console.error('Error with tfjs-vis charts:', error);
     }
+}
+
+function createHTMLCharts(sexData, pclassData) {
+    const infoDiv = document.getElementById('data-info');
+    
+    let sexChartHTML = '<h3>Survival Rate by Sex (HTML Chart)</h3><div style="display: flex; align-items: flex-end; height: 200px; gap: 20px; margin: 20px 0;">';
+    let pclassChartHTML = '<h3>Survival Rate by Passenger Class (HTML Chart)</h3><div style="display: flex; align-items: flex-end; height: 200px; gap: 20px; margin: 20px 0;">';
+    
+    // Create sex chart bars
+    sexData.forEach(item => {
+        const height = item.y;
+        sexChartHTML += `
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="width: 50px; height: ${height}%; background: #4CAF50; display: flex; align-items: flex-end; justify-content: center;"></div>
+                <div style="margin-top: 10px; font-weight: bold;">${item.x}</div>
+                <div style="font-size: 12px;">${item.y.toFixed(1)}%</div>
+            </div>
+        `;
+    });
+    
+    // Create pclass chart bars
+    pclassData.forEach(item => {
+        const height = item.y;
+        pclassChartHTML += `
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="width: 50px; height: ${height}%; background: #2196F3; display: flex; align-items: flex-end; justify-content: center;"></div>
+                <div style="margin-top: 10px; font-weight: bold;">${item.x}</div>
+                <div style="font-size: 12px;">${item.y.toFixed(1)}%</div>
+            </div>
+        `;
+    });
+    
+    sexChartHTML += '</div>';
+    pclassChartHTML += '</div>';
+    
+    infoDiv.innerHTML += sexChartHTML + pclassChartHTML;
 }
 
 // Preprocessing
@@ -624,28 +650,78 @@ function calculateROC(predictions, trueLabels) {
     
     console.log(`AUC: ${auc.toFixed(3)}`);
     
-    // Plot ROC curve
+    // Create HTML ROC chart
+    createHTMLROCChart();
+    
+    // Try tfjs-vis ROC chart
     try {
-        const rocValues = rocData.map(point => ({ x: point.fpr, y: point.tpr }));
-        tfvis.render.scatterplot(
-            { name: `ROC Curve (AUC = ${auc.toFixed(3)})`, tab: 'Metrics' },
-            { values: rocValues },
-            {
-                xLabel: 'False Positive Rate',
-                yLabel: 'True Positive Rate',
-                styles: { line: { color: 'blue' } }
-            }
-        );
+        if (typeof tfvis !== 'undefined') {
+            const rocValues = rocData.map(point => ({ x: point.fpr, y: point.tpr }));
+            tfvis.render.scatterplot(
+                { name: `ROC Curve (AUC = ${auc.toFixed(3)})`, tab: 'Metrics' },
+                { values: rocValues },
+                {
+                    xLabel: 'False Positive Rate',
+                    yLabel: 'True Positive Rate',
+                    styles: { line: { color: 'blue' } }
+                }
+            );
+        }
     } catch (error) {
-        console.error('Error plotting ROC curve:', error);
+        console.error('Error with tfjs-vis ROC chart:', error);
     }
 }
 
-// Metrics Update
+function createHTMLROCChart() {
+    const rocDiv = document.getElementById('roc-curve');
+    
+    if (!rocDiv) {
+        console.error('ROC curve div not found');
+        return;
+    }
+    
+    let rocHTML = `
+        <h3>ROC Curve (AUC = ${auc.toFixed(3)})</h3>
+        <div style="border: 1px solid #ddd; padding: 20px; background: white; border-radius: 5px;">
+            <p><strong>ROC Points:</strong></p>
+            <div style="max-height: 200px; overflow-y: auto;">
+                <table style="width: 100%; font-size: 12px;">
+                    <tr>
+                        <th>Threshold</th>
+                        <th>FPR</th>
+                        <th>TPR</th>
+                    </tr>
+    `;
+    
+    // Show every 10th point to avoid too much data
+    for (let i = 0; i < rocData.length; i += 10) {
+        const point = rocData[i];
+        rocHTML += `
+            <tr>
+                <td>${point.threshold.toFixed(2)}</td>
+                <td>${point.fpr.toFixed(3)}</td>
+                <td>${point.tpr.toFixed(3)}</td>
+            </tr>
+        `;
+    }
+    
+    rocHTML += `
+                </table>
+            </div>
+            <p><em>Full ROC data available in console. AUC = ${auc.toFixed(3)}</em></p>
+        </div>
+    `;
+    
+    rocDiv.innerHTML = rocHTML;
+}
+
+// Metrics Update - COMPLETELY REWRITTEN
 function updateMetrics() {
+    console.log('Updating metrics...');
+    
     if (!rocData || rocData.length === 0) {
-        console.log('No ROC data available');
-        document.getElementById('confusion-matrix').innerHTML = '<p>No metrics available yet. Train the model first.</p>';
+        console.log('No ROC data available for metrics');
+        document.getElementById('confusion-matrix').innerHTML = '<p>No metrics available yet. Please train the model first.</p>';
         document.getElementById('metrics-values').innerHTML = '';
         return;
     }
@@ -653,48 +729,91 @@ function updateMetrics() {
     const threshold = parseFloat(document.getElementById('threshold-slider').value);
     document.getElementById('threshold-value').textContent = threshold.toFixed(2);
     
-    const rocPoint = rocData.reduce((prev, curr) => 
-        Math.abs(curr.threshold - threshold) < Math.abs(prev.threshold - threshold) ? curr : prev
-    );
+    // Find the closest ROC point to the current threshold
+    let rocPoint = rocData[0];
+    for (let i = 1; i < rocData.length; i++) {
+        if (Math.abs(rocData[i].threshold - threshold) < Math.abs(rocPoint.threshold - threshold)) {
+            rocPoint = rocData[i];
+        }
+    }
+    
+    console.log('Selected ROC point:', rocPoint);
     
     const precision = rocPoint.tp / (rocPoint.tp + rocPoint.fp) || 0;
     const recall = rocPoint.tpr;
     const f1 = 2 * (precision * recall) / (precision + recall) || 0;
     const accuracy = (rocPoint.tp + rocPoint.tn) / (rocPoint.tp + rocPoint.fp + rocPoint.tn + rocPoint.fn) || 0;
     
-    // Update confusion matrix display
-    document.getElementById('confusion-matrix').innerHTML = `
+    // Update confusion matrix - FIXED DISPLAY
+    const confusionMatrixHTML = `
         <h3>Confusion Matrix (Threshold: ${threshold.toFixed(2)})</h3>
-        <table style="width: 100%; text-align: center; border-collapse: collapse; margin: 10px 0;">
-            <tr>
-                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;"></th>
-                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Predicted Negative</th>
-                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Predicted Positive</th>
-            </tr>
-            <tr>
-                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Actual Negative</th>
-                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.tn}</td>
-                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.fp}</td>
-            </tr>
-            <tr>
-                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Actual Positive</th>
-                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.fn}</td>
-                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.tp}</td>
-            </tr>
-        </table>
-    `;
-    
-    // Update metrics display
-    document.getElementById('metrics-values').innerHTML = `
-        <h3>Performance Metrics</h3>
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 10px 0;">
-            <p><strong>Accuracy:</strong> ${accuracy.toFixed(3)}</p>
-            <p><strong>Precision:</strong> ${precision.toFixed(3)}</p>
-            <p><strong>Recall:</strong> ${recall.toFixed(3)}</p>
-            <p><strong>F1-Score:</strong> ${f1.toFixed(3)}</p>
-            <p><strong>AUC:</strong> ${auc.toFixed(3)}</p>
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 5px;">
+            <table style="width: 100%; text-align: center; border-collapse: collapse; margin: 0 auto;">
+                <tr>
+                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;"></th>
+                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;">Predicted Negative</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;">Predicted Positive</th>
+                </tr>
+                <tr>
+                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;">Actual Negative</th>
+                    <td style="border: 1px solid #ddd; padding: 12px; background: #d4edda;">${rocPoint.tn}</td>
+                    <td style="border: 1px solid #ddd; padding: 12px; background: #f8d7da;">${rocPoint.fp}</td>
+                </tr>
+                <tr>
+                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;">Actual Positive</th>
+                    <td style="border: 1px solid #ddd; padding: 12px; background: #f8d7da;">${rocPoint.fn}</td>
+                    <td style="border: 1px solid #ddd; padding: 12px; background: #d4edda;">${rocPoint.tp}</td>
+                </tr>
+            </table>
         </div>
     `;
+    
+    // Update metrics values - FIXED DISPLAY
+    const metricsHTML = `
+        <h3>Performance Metrics</h3>
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 5px; margin-top: 20px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff;">
+                    <strong>Accuracy</strong><br>
+                    <span style="font-size: 24px; font-weight: bold; color: #007bff;">${accuracy.toFixed(3)}</span>
+                </div>
+                <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #28a745;">
+                    <strong>Precision</strong><br>
+                    <span style="font-size: 24px; font-weight: bold; color: #28a745;">${precision.toFixed(3)}</span>
+                </div>
+                <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
+                    <strong>Recall</strong><br>
+                    <span style="font-size: 24px; font-weight: bold; color: #ffc107;">${recall.toFixed(3)}</span>
+                </div>
+                <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #dc3545;">
+                    <strong>F1-Score</strong><br>
+                    <span style="font-size: 24px; font-weight: bold; color: #dc3545;">${f1.toFixed(3)}</span>
+                </div>
+            </div>
+            <div style="background: white; padding: 15px; border-radius: 5px; margin-top: 15px; border-left: 4px solid #6f42c1;">
+                <strong>AUC (Area Under ROC Curve)</strong><br>
+                <span style="font-size: 24px; font-weight: bold; color: #6f42c1;">${auc.toFixed(3)}</span>
+            </div>
+        </div>
+    `;
+    
+    // Update the DOM
+    const confusionMatrixElement = document.getElementById('confusion-matrix');
+    const metricsValuesElement = document.getElementById('metrics-values');
+    
+    if (confusionMatrixElement) {
+        confusionMatrixElement.innerHTML = confusionMatrixHTML;
+    } else {
+        console.error('Confusion matrix element not found');
+    }
+    
+    if (metricsValuesElement) {
+        metricsValuesElement.innerHTML = metricsHTML;
+    } else {
+        console.error('Metrics values element not found');
+    }
+    
+    console.log('Metrics updated successfully');
 }
 
 // Prediction
