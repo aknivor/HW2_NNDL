@@ -272,10 +272,19 @@ function preprocessDataset(data, isTraining, stats = null) {
             return mode;
         };
         
+        // Calculate standard deviation manually
+        const calculateStd = (arr) => {
+            if (arr.length === 0) return 1;
+            const mean = arr.reduce((sum, val) => sum + val, 0) / arr.length;
+            const squaredDiffs = arr.map(val => Math.pow(val - mean, 2));
+            const variance = squaredDiffs.reduce((sum, val) => sum + val, 0) / arr.length;
+            return Math.sqrt(variance);
+        };
+        
         stats = {
             ageMedian: calculateMedian(ages),
-            fareMean: fares.length > 0 ? tf.mean(tf.tensor1d(fares)).dataSync()[0] : 0,
-            fareStd: fares.length > 0 ? tf.tensor1d(fares).std().dataSync()[0] : 1,
+            fareMean: fares.length > 0 ? fares.reduce((sum, val) => sum + val, 0) / fares.length : 0,
+            fareStd: fares.length > 0 ? calculateStd(fares) : 1,
             embarkedMode: calculateMode(embarked)
         };
     }
