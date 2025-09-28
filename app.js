@@ -237,56 +237,77 @@ function preprocessData() {
         
     } catch (error) {
         alert('Error preprocessing data: ' + error.message);
+        console.error('Preprocessing error:', error);
     }
 }
 
+// Helper functions for statistics
+function calculateMedian(arr) {
+    if (arr.length === 0) return 0;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function calculateMean(arr) {
+    if (arr.length === 0) return 0;
+    return arr.reduce((sum, val) => sum + val, 0) / arr.length;
+}
+
+function calculateStd(arr) {
+    if (arr.length === 0) return 1;
+    const mean = calculateMean(arr);
+    const squaredDiffs = arr.map(val => Math.pow(val - mean, 2));
+    const variance = squaredDiffs.reduce((sum, val) => sum + val, 0) / arr.length;
+    return Math.sqrt(variance);
+}
+
+function calculateMode(arr) {
+    if (arr.length === 0) return 'S';
+    const frequency = {};
+    let maxCount = 0;
+    let mode = arr[0];
+    
+    arr.forEach(item => {
+        frequency[item] = (frequency[item] || 0) + 1;
+        if (frequency[item] > maxCount) {
+            maxCount = frequency[item];
+            mode = item;
+        }
+    });
+    return mode;
+}
+
 function preprocessDataset(data, isTraining, stats = null) {
+    console.log('Starting preprocessing...');
+    
     // Calculate statistics from training data
     if (isTraining) {
-        const ages = data.map(row => parseFloat(row.Age)).filter(age => !isNaN(age));
-        const fares = data.map(row => parseFloat(row.Fare)).filter(fare => !isNaN(fare));
-        const embarked = data.map(row => row.Embarked).filter(e => e);
+        console.log('Calculating training statistics...');
         
-        // Calculate median manually
-        const calculateMedian = (arr) => {
-            if (arr.length === 0) return 0;
-            const sorted = [...arr].sort((a, b) => a - b);
-            const mid = Math.floor(sorted.length / 2);
-            return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-        };
+        // Extract numeric values, handling missing data
+        const ages = data.map(row => {
+            const age = parseFloat(row.Age);
+            return isNaN(age) ? null : age;
+        }).filter(age => age !== null);
         
-        // Calculate mode manually
-        const calculateMode = (arr) => {
-            if (arr.length === 0) return 'S';
-            const frequency = {};
-            let maxCount = 0;
-            let mode = arr[0];
-            
-            arr.forEach(item => {
-                frequency[item] = (frequency[item] || 0) + 1;
-                if (frequency[item] > maxCount) {
-                    maxCount = frequency[item];
-                    mode = item;
-                }
-            });
-            return mode;
-        };
+        const fares = data.map(row => {
+            const fare = parseFloat(row.Fare);
+            return isNaN(fare) ? null : fare;
+        }).filter(fare => fare !== null);
         
-        // Calculate standard deviation manually
-        const calculateStd = (arr) => {
-            if (arr.length === 0) return 1;
-            const mean = arr.reduce((sum, val) => sum + val, 0) / arr.length;
-            const squaredDiffs = arr.map(val => Math.pow(val - mean, 2));
-            const variance = squaredDiffs.reduce((sum, val) => sum + val, 0) / arr.length;
-            return Math.sqrt(variance);
-        };
+        const embarked = data.map(row => row.Embarked).filter(e => e && e !== '');
+        
+        console.log(`Ages: ${ages.length}, Fares: ${fares.length}, Embarked: ${embarked.length}`);
         
         stats = {
             ageMedian: calculateMedian(ages),
-            fareMean: fares.length > 0 ? fares.reduce((sum, val) => sum + val, 0) / fares.length : 0,
-            fareStd: fares.length > 0 ? calculateStd(fares) : 1,
+            fareMean: calculateMean(fares),
+            fareStd: calculateStd(fares),
             embarkedMode: calculateMode(embarked)
         };
+        
+        console.log('Calculated stats:', stats);
     }
     
     // Extract features and labels
@@ -294,48 +315,71 @@ function preprocessDataset(data, isTraining, stats = null) {
     const labels = [];
     const identifiers = [];
     
-    data.forEach(row => {
-        // Handle missing values
-        const age = isNaN(parseFloat(row.Age)) ? stats.ageMedian : parseFloat(row.Age);
-        const fare = isNaN(parseFloat(row.Fare)) ? 0 : parseFloat(row.Fare);
-        const embarked = row.Embarked || stats.embarkedMode;
-        
-        // Create feature vector
-        const featureVector = [
-            // Numerical features (standardized)
-            age,
-            (fare - stats.fareMean) / stats.fareStd,
-            parseFloat(row.SibSp) || 0,
-            parseFloat(row.Parch) || 0,
+    console.log('Processing rows...');
+    
+    data.forEach((row, index) => {
+        try {
+            // Handle missing values with fallbacks
+            const age = isNaN(parseFloat(row.Age)) ? (stats.ageMedian || 30) : parseFloat(row.Age);
+            const fare = isNaN(parseFloat(row.Fare)) ? 0 : parseFloat(row.Fare);
+            const embarked = row.Embarked || stats.embarkedMode || 'S';
             
-            // One-hot encoded Sex (male: [1,0], female: [0,1])
-            row.Sex === 'male' ? 1 : 0,
-            row.Sex === 'female' ? 1 : 0,
+            // Standardize fare
+            const fareStd = stats.fareStd > 0 ? stats.fareStd : 1;
+            const standardizedFare = (fare - stats.fareMean) / fareStd;
             
-            // One-hot encoded Pclass
-            row.Pclass === '1' ? 1 : 0,
-            row.Pclass === '2' ? 1 : 0,
-            row.Pclass === '3' ? 1 : 0,
+            // Create feature vector
+            const featureVector = [
+                // Numerical features
+                age,
+                standardizedFare,
+                parseFloat(row.SibSp) || 0,
+                parseFloat(row.Parch) || 0,
+                
+                // One-hot encoded Sex
+                row.Sex === 'male' ? 1 : 0,
+                row.Sex === 'female' ? 1 : 0,
+                
+                // One-hot encoded Pclass
+                row.Pclass === '1' ? 1 : 0,
+                row.Pclass === '2' ? 1 : 0,
+                row.Pclass === '3' ? 1 : 0,
+                
+                // One-hot encoded Embarked
+                embarked === 'C' ? 1 : 0,
+                embarked === 'Q' ? 1 : 0,
+                embarked === 'S' ? 1 : 0
+            ];
             
-            // One-hot encoded Embarked
-            embarked === 'C' ? 1 : 0,
-            embarked === 'Q' ? 1 : 0,
-            embarked === 'S' ? 1 : 0
-        ];
-        
-        features.push(featureVector);
-        
-        // Labels (only for training data)
-        if (isTraining && row.Survived !== undefined) {
-            labels.push(parseInt(row.Survived));
+            features.push(featureVector);
+            
+            // Labels (only for training data)
+            if (isTraining && row.Survived !== undefined && row.Survived !== '') {
+                labels.push(parseInt(row.Survived));
+            }
+            
+            identifiers.push(row.PassengerId);
+            
+        } catch (error) {
+            console.error(`Error processing row ${index}:`, row, error);
         }
-        
-        identifiers.push(row.PassengerId);
     });
     
+    console.log(`Processed ${features.length} rows with ${features[0] ? features[0].length : 0} features`);
+    
+    // Create tensors
+    let featuresTensor, labelsTensor;
+    try {
+        featuresTensor = tf.tensor2d(features);
+        labelsTensor = isTraining && labels.length > 0 ? tf.tensor1d(labels) : null;
+    } catch (error) {
+        console.error('Error creating tensors:', error);
+        throw error;
+    }
+    
     return {
-        features: tf.tensor2d(features),
-        labels: isTraining && labels.length > 0 ? tf.tensor1d(labels) : null,
+        features: featuresTensor,
+        labels: labelsTensor,
         identifiers: identifiers,
         stats: stats
     };
@@ -397,24 +441,20 @@ function createModel() {
 function displayModelInfo() {
     const infoDiv = document.getElementById('model-info');
     
-    // Count total parameters
+    let summaryLines = [];
     let totalParams = 0;
+    
     model.summary(null, null, (line) => {
+        summaryLines.push(line);
         const match = line.match(/params:\s*([\d,]+)/);
         if (match) {
             totalParams += parseInt(match[1].replace(/,/g, ''));
         }
     });
     
-    // Create summary
-    let summary = '';
-    model.summary(null, null, (line) => {
-        summary += line + '<br>';
-    });
-    
     infoDiv.innerHTML = `
         <h3>Model Created Successfully</h3>
-        <div><strong>Model Summary:</strong><br>${summary}</div>
+        <div><strong>Model Summary:</strong><br><pre>${summaryLines.join('\n')}</pre></div>
         <p><strong>Total Parameters:</strong> ${totalParams.toLocaleString()}</p>
     `;
 }
