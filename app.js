@@ -247,15 +247,36 @@ function preprocessDataset(data, isTraining, stats = null) {
         const fares = data.map(row => parseFloat(row.Fare)).filter(fare => !isNaN(fare));
         const embarked = data.map(row => row.Embarked).filter(e => e);
         
+        // Calculate median manually
+        const calculateMedian = (arr) => {
+            if (arr.length === 0) return 0;
+            const sorted = [...arr].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+        };
+        
+        // Calculate mode manually
+        const calculateMode = (arr) => {
+            if (arr.length === 0) return 'S';
+            const frequency = {};
+            let maxCount = 0;
+            let mode = arr[0];
+            
+            arr.forEach(item => {
+                frequency[item] = (frequency[item] || 0) + 1;
+                if (frequency[item] > maxCount) {
+                    maxCount = frequency[item];
+                    mode = item;
+                }
+            });
+            return mode;
+        };
+        
         stats = {
-            ageMedian: ages.length > 0 ? tf.util.median(ages) : 0,
-            fareMean: fares.length > 0 ? tf.mean(fares).dataSync()[0] : 0,
-            fareStd: fares.length > 0 ? tf.tensor(fares).std().dataSync()[0] : 1,
-            embarkedMode: embarked.length > 0 ? 
-                embarked.sort((a,b) => 
-                    embarked.filter(v => v === a).length - 
-                    embarked.filter(v => v === b).length
-                ).pop() : 'S'
+            ageMedian: calculateMedian(ages),
+            fareMean: fares.length > 0 ? tf.mean(tf.tensor1d(fares)).dataSync()[0] : 0,
+            fareStd: fares.length > 0 ? tf.tensor1d(fares).std().dataSync()[0] : 1,
+            embarkedMode: calculateMode(embarked)
         };
     }
     
@@ -275,8 +296,8 @@ function preprocessDataset(data, isTraining, stats = null) {
             // Numerical features (standardized)
             age,
             (fare - stats.fareMean) / stats.fareStd,
-            parseFloat(row.SibSp),
-            parseFloat(row.Parch),
+            parseFloat(row.SibSp) || 0,
+            parseFloat(row.Parch) || 0,
             
             // One-hot encoded Sex (male: [1,0], female: [0,1])
             row.Sex === 'male' ? 1 : 0,
@@ -296,7 +317,7 @@ function preprocessDataset(data, isTraining, stats = null) {
         features.push(featureVector);
         
         // Labels (only for training data)
-        if (isTraining) {
+        if (isTraining && row.Survived !== undefined) {
             labels.push(parseInt(row.Survived));
         }
         
@@ -305,7 +326,7 @@ function preprocessDataset(data, isTraining, stats = null) {
     
     return {
         features: tf.tensor2d(features),
-        labels: isTraining ? tf.tensor1d(labels) : null,
+        labels: isTraining && labels.length > 0 ? tf.tensor1d(labels) : null,
         identifiers: identifiers,
         stats: stats
     };
@@ -320,6 +341,10 @@ function displayPreprocessInfo(trainProcessed, testProcessed) {
         <p><strong>Processed Test Features Shape:</strong> ${testProcessed.features.shape}</p>
         <p><strong>Feature Names:</strong> Age, Fare_std, SibSp, Parch, Sex_male, Sex_female, 
            Pclass_1, Pclass_2, Pclass_3, Embarked_C, Embarked_Q, Embarked_S</p>
+        <p><strong>Age Median:</strong> ${trainProcessed.stats.ageMedian.toFixed(2)}</p>
+        <p><strong>Fare Mean:</strong> ${trainProcessed.stats.fareMean.toFixed(2)}</p>
+        <p><strong>Fare Std:</strong> ${trainProcessed.stats.fareStd.toFixed(2)}</p>
+        <p><strong>Embarked Mode:</strong> ${trainProcessed.stats.embarkedMode}</p>
     `;
 }
 
@@ -363,6 +388,15 @@ function createModel() {
 function displayModelInfo() {
     const infoDiv = document.getElementById('model-info');
     
+    // Count total parameters
+    let totalParams = 0;
+    model.summary(null, null, (line) => {
+        const match = line.match(/params:\s*([\d,]+)/);
+        if (match) {
+            totalParams += parseInt(match[1].replace(/,/g, ''));
+        }
+    });
+    
     // Create summary
     let summary = '';
     model.summary(null, null, (line) => {
@@ -372,6 +406,7 @@ function displayModelInfo() {
     infoDiv.innerHTML = `
         <h3>Model Created Successfully</h3>
         <div><strong>Model Summary:</strong><br>${summary}</div>
+        <p><strong>Total Parameters:</strong> ${totalParams.toLocaleString()}</p>
     `;
 }
 
@@ -486,7 +521,7 @@ function calculateROC() {
         const tpr = tp / (tp + fn) || 0;
         const fpr = fp / (fp + tn) || 0;
         
-        rocData.push({ fpr, tpr, threshold });
+        rocData.push({ fpr, tpr, threshold, tp, fp, tn, fn });
     });
     
     // Calculate AUC using trapezoidal rule
@@ -521,29 +556,25 @@ function updateMetrics() {
         Math.abs(curr.threshold - threshold) < Math.abs(prev.threshold - threshold) ? curr : prev
     );
     
-    // Calculate confusion matrix and metrics
-    const tp = rocPoint.tpr * (rocPoint.tpr * rocData.length / 2); // Approximation
-    const fn = (1 - rocPoint.tpr) * (rocPoint.tpr * rocData.length / 2);
-    const fp = rocPoint.fpr * (rocPoint.fpr * rocData.length / 2);
-    const tn = (1 - rocPoint.fpr) * (rocPoint.fpr * rocData.length / 2);
-    
-    const precision = tp / (tp + fp) || 0;
+    const precision = rocPoint.tp / (rocPoint.tp + rocPoint.fp) || 0;
     const recall = rocPoint.tpr;
     const f1 = 2 * (precision * recall) / (precision + recall) || 0;
+    const accuracy = (rocPoint.tp + rocPoint.tn) / (rocPoint.tp + rocPoint.fp + rocPoint.tn + rocPoint.fn) || 0;
     
     // Update confusion matrix display
     document.getElementById('confusion-matrix').innerHTML = `
         <h3>Confusion Matrix (Threshold: ${threshold.toFixed(2)})</h3>
         <table>
             <tr><th></th><th>Predicted Negative</th><th>Predicted Positive</th></tr>
-            <tr><th>Actual Negative</th><td>${tn.toFixed(0)}</td><td>${fp.toFixed(0)}</td></tr>
-            <tr><th>Actual Positive</th><td>${fn.toFixed(0)}</td><td>${tp.toFixed(0)}</td></tr>
+            <tr><th>Actual Negative</th><td>${rocPoint.tn}</td><td>${rocPoint.fp}</td></tr>
+            <tr><th>Actual Positive</th><td>${rocPoint.fn}</td><td>${rocPoint.tp}</td></tr>
         </table>
     `;
     
     // Update metrics display
     document.getElementById('metrics-values').innerHTML = `
         <h3>Performance Metrics</h3>
+        <p><strong>Accuracy:</strong> ${accuracy.toFixed(3)}</p>
         <p><strong>Precision:</strong> ${precision.toFixed(3)}</p>
         <p><strong>Recall:</strong> ${recall.toFixed(3)}</p>
         <p><strong>F1-Score:</strong> ${f1.toFixed(3)}</p>
@@ -638,3 +669,6 @@ function downloadFile(content, filename, contentType) {
     link.click();
     URL.revokeObjectURL(url);
 }
+
+// Initialize the application
+console.log('Titanic Classifier App initialized. Load your CSV files to begin.');
