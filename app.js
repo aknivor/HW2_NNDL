@@ -149,8 +149,6 @@ function generateTablePreview(data) {
 }
 
 function visualizeData() {
-    console.log('Starting data visualization...');
-    
     const survivalBySex = {};
     const survivalByPclass = {};
     
@@ -166,102 +164,31 @@ function visualizeData() {
         if (row.Survived === '1') survivalByPclass[pclass].survived++;
     });
     
-    console.log('Survival by Sex:', survivalBySex);
-    console.log('Survival by Pclass:', survivalByPclass);
+    const sexData = {
+        values: Object.entries(survivalBySex).map(([sex, stats]) => ({
+            x: sex,
+            y: (stats.survived / stats.total) * 100
+        }))
+    };
     
-    // Create visualization data
-    const sexData = Object.entries(survivalBySex).map(([sex, stats]) => ({
-        x: sex,
-        y: (stats.survived / stats.total) * 100
-    }));
+    const pclassData = {
+        values: Object.entries(survivalByPclass).map(([pclass, stats]) => ({
+            x: pclass,
+            y: (stats.survived / stats.total) * 100
+        }))
+    };
     
-    const pclassData = Object.entries(survivalByPclass).map(([pclass, stats]) => ({
-        x: pclass,
-        y: (stats.survived / stats.total) * 100
-    }));
+    tfvis.render.barchart(
+        { name: 'Survival Rate by Sex', tab: 'Data Inspection' },
+        sexData,
+        { xLabel: 'Sex', yLabel: 'Survival Rate (%)' }
+    );
     
-    console.log('Sex data for chart:', sexData);
-    console.log('Pclass data for chart:', pclassData);
-    
-    // Create HTML charts as fallback since tfjs-vis might not be working
-    createHTMLCharts(sexData, pclassData);
-    
-    // Try tfjs-vis with better error handling
-    try {
-        if (typeof tfvis !== 'undefined') {
-            console.log('tfvis is available, attempting to render charts...');
-            
-            // Ensure visor is open
-            const visor = tfvis.visor();
-            if (!visor.isOpen()) {
-                visor.open();
-                console.log('Opened tfjs-vis visor');
-            }
-            
-            // Render charts
-            tfvis.render.barchart(
-                { name: 'Survival Rate by Sex', tab: 'Data Inspection' },
-                [{ values: sexData }],
-                { 
-                    xLabel: 'Sex', 
-                    yLabel: 'Survival Rate (%)',
-                    yAxisDomain: [0, 100]
-                }
-            );
-            
-            tfvis.render.barchart(
-                { name: 'Survival Rate by Passenger Class', tab: 'Data Inspection' },
-                [{ values: pclassData }],
-                { 
-                    xLabel: 'Passenger Class', 
-                    yLabel: 'Survival Rate (%)',
-                    yAxisDomain: [0, 100]
-                }
-            );
-            
-            console.log('tfjs-vis charts rendered successfully');
-        } else {
-            console.warn('tfvis is not available, using HTML charts only');
-        }
-    } catch (error) {
-        console.error('Error with tfjs-vis charts:', error);
-    }
-}
-
-function createHTMLCharts(sexData, pclassData) {
-    const infoDiv = document.getElementById('data-info');
-    
-    let sexChartHTML = '<h3>Survival Rate by Sex (HTML Chart)</h3><div style="display: flex; align-items: flex-end; height: 200px; gap: 20px; margin: 20px 0;">';
-    let pclassChartHTML = '<h3>Survival Rate by Passenger Class (HTML Chart)</h3><div style="display: flex; align-items: flex-end; height: 200px; gap: 20px; margin: 20px 0;">';
-    
-    // Create sex chart bars
-    sexData.forEach(item => {
-        const height = item.y;
-        sexChartHTML += `
-            <div style="display: flex; flex-direction: column; align-items: center;">
-                <div style="width: 50px; height: ${height}%; background: #4CAF50; display: flex; align-items: flex-end; justify-content: center;"></div>
-                <div style="margin-top: 10px; font-weight: bold;">${item.x}</div>
-                <div style="font-size: 12px;">${item.y.toFixed(1)}%</div>
-            </div>
-        `;
-    });
-    
-    // Create pclass chart bars
-    pclassData.forEach(item => {
-        const height = item.y;
-        pclassChartHTML += `
-            <div style="display: flex; flex-direction: column; align-items: center;">
-                <div style="width: 50px; height: ${height}%; background: #2196F3; display: flex; align-items: flex-end; justify-content: center;"></div>
-                <div style="margin-top: 10px; font-weight: bold;">${item.x}</div>
-                <div style="font-size: 12px;">${item.y.toFixed(1)}%</div>
-            </div>
-        `;
-    });
-    
-    sexChartHTML += '</div>';
-    pclassChartHTML += '</div>';
-    
-    infoDiv.innerHTML += sexChartHTML + pclassChartHTML;
+    tfvis.render.barchart(
+        { name: 'Survival Rate by Passenger Class', tab: 'Data Inspection' },
+        pclassData,
+        { xLabel: 'Passenger Class', yLabel: 'Survival Rate (%)' }
+    );
 }
 
 // Preprocessing
@@ -329,9 +256,11 @@ function calculateMode(arr) {
 function preprocessDataset(data, isTraining, stats = null) {
     console.log(`Preprocessing ${data.length} rows, isTraining: ${isTraining}`);
     
+    // Calculate statistics from training data
     if (isTraining) {
         console.log('Calculating training statistics...');
         
+        // Extract and clean data
         const ages = [];
         const fares = [];
         const embarked = [];
@@ -339,16 +268,19 @@ function preprocessDataset(data, isTraining, stats = null) {
         for (let i = 0; i < data.length; i++) {
             const row = data[i];
             
+            // Age
             const ageVal = parseFloat(row.Age);
             if (!isNaN(ageVal) && isFinite(ageVal)) {
                 ages.push(ageVal);
             }
             
+            // Fare
             const fareVal = parseFloat(row.Fare);
             if (!isNaN(fareVal) && isFinite(fareVal)) {
                 fares.push(fareVal);
             }
             
+            // Embarked
             if (row.Embarked && row.Embarked.trim() !== '') {
                 embarked.push(row.Embarked);
             }
@@ -356,6 +288,7 @@ function preprocessDataset(data, isTraining, stats = null) {
         
         console.log(`Valid data - Ages: ${ages.length}, Fares: ${fares.length}, Embarked: ${embarked.length}`);
         
+        // Calculate statistics with fallbacks
         const ageMedian = ages.length > 0 ? calculateMedian(ages) : 28.0;
         const fareMean = fares.length > 0 ? calculateMean(fares) : 32.20;
         const fareStd = fares.length > 0 ? calculateStd(fares) : 49.69;
@@ -374,49 +307,57 @@ function preprocessDataset(data, isTraining, stats = null) {
     const features = [];
     const labels = [];
     const identifiers = [];
+    let processedCount = 0;
     
+    // Process each row
     for (let i = 0; i < data.length; i++) {
         const row = data[i];
         
         try {
+            // Parse Age with fallback
             let age = parseFloat(row.Age);
             if (isNaN(age) || !isFinite(age)) {
                 age = stats.ageMedian;
             }
             
+            // Parse Fare with fallback
             let fare = parseFloat(row.Fare);
             if (isNaN(fare) || !isFinite(fare)) {
                 fare = stats.fareMean;
             }
             
+            // Handle Embarked
             let embarked = row.Embarked;
             if (!embarked || embarked.trim() === '') {
                 embarked = stats.embarkedMode;
             }
             
+            // Parse other numeric fields
             const sibsp = parseInt(row.SibSp) || 0;
             const parch = parseInt(row.Parch) || 0;
             
-            // Use raw values without standardization to avoid NaN issues
+            // Create feature vector - SIMPLIFIED to avoid standardization issues
             const featureVector = [
-                age,
-                fare,
+                age,                           // Raw age
+                fare,                          // Raw fare (no standardization)
                 sibsp,
                 parch,
-                row.Sex === 'male' ? 1 : 0,
-                row.Sex === 'female' ? 1 : 0,
-                row.Pclass === '1' ? 1 : 0,
-                row.Pclass === '2' ? 1 : 0,
-                row.Pclass === '3' ? 1 : 0,
-                embarked === 'C' ? 1 : 0,
-                embarked === 'Q' ? 1 : 0,
-                embarked === 'S' ? 1 : 0
+                row.Sex === 'male' ? 1 : 0,    // Male
+                row.Sex === 'female' ? 1 : 0,  // Female
+                row.Pclass === '1' ? 1 : 0,    // Pclass 1
+                row.Pclass === '2' ? 1 : 0,    // Pclass 2  
+                row.Pclass === '3' ? 1 : 0,    // Pclass 3
+                embarked === 'C' ? 1 : 0,      // Embarked C
+                embarked === 'Q' ? 1 : 0,      // Embarked Q
+                embarked === 'S' ? 1 : 0       // Embarked S
             ];
             
+            // Validate all values are finite numbers
             let isValid = true;
             for (let j = 0; j < featureVector.length; j++) {
                 const val = featureVector[j];
                 if (isNaN(val) || !isFinite(val)) {
+                    console.warn(`Invalid value at index ${j} in row ${i}:`, val);
                     isValid = false;
                     break;
                 }
@@ -427,7 +368,9 @@ function preprocessDataset(data, isTraining, stats = null) {
             }
             
             features.push(featureVector);
+            processedCount++;
             
+            // Handle labels for training data
             if (isTraining && row.Survived !== undefined && row.Survived !== '') {
                 const label = parseInt(row.Survived);
                 if (label === 0 || label === 1) {
@@ -442,16 +385,34 @@ function preprocessDataset(data, isTraining, stats = null) {
         }
     }
     
-    console.log(`Successfully processed ${features.length} of ${data.length} rows`);
+    console.log(`Successfully processed ${processedCount} of ${data.length} rows`);
     
     if (features.length === 0) {
         throw new Error('No valid features could be processed');
     }
     
+    // Create tensors
     const featuresTensor = tf.tensor2d(features);
     const labelsTensor = isTraining && labels.length > 0 ? tf.tensor1d(labels) : null;
     
+    // Verify tensors don't contain NaN
+    const featuresArray = featuresTensor.arraySync();
+    let hasNaN = false;
+    for (let i = 0; i < Math.min(5, featuresArray.length); i++) {
+        for (let j = 0; j < featuresArray[i].length; j++) {
+            if (isNaN(featuresArray[i][j])) {
+                console.error(`NaN found in features at [${i}][${j}]`);
+                hasNaN = true;
+            }
+        }
+    }
+    
+    if (hasNaN) {
+        throw new Error('Features tensor contains NaN values');
+    }
+    
     console.log('Features tensor shape:', featuresTensor.shape);
+    console.log('Sample features:', featuresArray[0]);
     
     return {
         features: featuresTensor,
@@ -490,8 +451,9 @@ function createModel() {
             layers: [
                 tf.layers.dense({
                     inputShape: [inputDim],
-                    units: 8,
-                    activation: 'relu'
+                    units: 8,  // Reduced complexity
+                    activation: 'relu',
+                    kernelInitializer: 'glorotNormal'
                 }),
                 tf.layers.dense({
                     units: 1,
@@ -501,7 +463,7 @@ function createModel() {
         });
         
         model.compile({
-            optimizer: 'adam',
+            optimizer: tf.train.adam(0.01),  // Explicit optimizer with learning rate
             loss: 'binaryCrossentropy',
             metrics: ['accuracy']
         });
@@ -546,9 +508,19 @@ async function trainModel() {
         validationData = [xVal, yVal];
         
         console.log('Starting training...');
+        console.log('Training data shapes - xTrain:', xTrain.shape, 'yTrain:', yTrain.shape);
+        console.log('Validation data shapes - xVal:', xVal.shape, 'yVal:', yVal.shape);
+        
+        // Verify no NaN in training data
+        const xTrainHasNaN = tf.isNaN(xTrain).any().dataSync()[0];
+        const yTrainHasNaN = tf.isNaN(yTrain).any().dataSync()[0];
+        
+        if (xTrainHasNaN || yTrainHasNaN) {
+            throw new Error('Training data contains NaN values');
+        }
         
         trainingHistory = await model.fit(xTrain, yTrain, {
-            epochs: 30,
+            epochs: 30,  // Reduced epochs
             batchSize: 32,
             validationData: validationData,
             callbacks: tfvis.show.fitCallbacks(
@@ -558,9 +530,16 @@ async function trainModel() {
             )
         });
         
+        // Get validation predictions for ROC
         const valPredictions = model.predict(xVal);
         const valProbs = valPredictions.dataSync();
         const valLabels = yVal.dataSync();
+        
+        // Check for NaN in validation predictions
+        const valNaNCount = valProbs.filter(p => isNaN(p)).length;
+        if (valNaNCount > 0) {
+            console.warn(`Found ${valNaNCount} NaN values in validation predictions`);
+        }
         
         calculateROC(valProbs, valLabels);
         updateMetrics();
@@ -650,170 +629,68 @@ function calculateROC(predictions, trueLabels) {
     
     console.log(`AUC: ${auc.toFixed(3)}`);
     
-    // Create HTML ROC chart
-    createHTMLROCChart();
-    
-    // Try tfjs-vis ROC chart
-    try {
-        if (typeof tfvis !== 'undefined') {
-            const rocValues = rocData.map(point => ({ x: point.fpr, y: point.tpr }));
-            tfvis.render.scatterplot(
-                { name: `ROC Curve (AUC = ${auc.toFixed(3)})`, tab: 'Metrics' },
-                { values: rocValues },
-                {
-                    xLabel: 'False Positive Rate',
-                    yLabel: 'True Positive Rate',
-                    styles: { line: { color: 'blue' } }
-                }
-            );
+    const rocValues = rocData.map(point => ({ x: point.fpr, y: point.tpr }));
+    tfvis.render.scatterplot(
+        { name: `ROC Curve (AUC = ${auc.toFixed(3)})`, tab: 'Metrics' },
+        { values: rocValues },
+        {
+            xLabel: 'False Positive Rate',
+            yLabel: 'True Positive Rate',
+            styles: { line: { color: 'blue' } }
         }
-    } catch (error) {
-        console.error('Error with tfjs-vis ROC chart:', error);
-    }
+    );
 }
 
-function createHTMLROCChart() {
-    const rocDiv = document.getElementById('roc-curve');
-    
-    if (!rocDiv) {
-        console.error('ROC curve div not found');
-        return;
-    }
-    
-    let rocHTML = `
-        <h3>ROC Curve (AUC = ${auc.toFixed(3)})</h3>
-        <div style="border: 1px solid #ddd; padding: 20px; background: white; border-radius: 5px;">
-            <p><strong>ROC Points:</strong></p>
-            <div style="max-height: 200px; overflow-y: auto;">
-                <table style="width: 100%; font-size: 12px;">
-                    <tr>
-                        <th>Threshold</th>
-                        <th>FPR</th>
-                        <th>TPR</th>
-                    </tr>
-    `;
-    
-    // Show every 10th point to avoid too much data
-    for (let i = 0; i < rocData.length; i += 10) {
-        const point = rocData[i];
-        rocHTML += `
-            <tr>
-                <td>${point.threshold.toFixed(2)}</td>
-                <td>${point.fpr.toFixed(3)}</td>
-                <td>${point.tpr.toFixed(3)}</td>
-            </tr>
-        `;
-    }
-    
-    rocHTML += `
-                </table>
-            </div>
-            <p><em>Full ROC data available in console. AUC = ${auc.toFixed(3)}</em></p>
-        </div>
-    `;
-    
-    rocDiv.innerHTML = rocHTML;
-}
-
-// Metrics Update - COMPLETELY REWRITTEN
+// Metrics Update
 function updateMetrics() {
-    console.log('Updating metrics...');
-    
     if (!rocData || rocData.length === 0) {
-        console.log('No ROC data available for metrics');
-        document.getElementById('confusion-matrix').innerHTML = '<p>No metrics available yet. Please train the model first.</p>';
-        document.getElementById('metrics-values').innerHTML = '';
+        document.getElementById('confusion-matrix').innerHTML = '<p>No metrics available yet. Train the model first.</p>';
         return;
     }
     
     const threshold = parseFloat(document.getElementById('threshold-slider').value);
     document.getElementById('threshold-value').textContent = threshold.toFixed(2);
     
-    // Find the closest ROC point to the current threshold
-    let rocPoint = rocData[0];
-    for (let i = 1; i < rocData.length; i++) {
-        if (Math.abs(rocData[i].threshold - threshold) < Math.abs(rocPoint.threshold - threshold)) {
-            rocPoint = rocData[i];
-        }
-    }
-    
-    console.log('Selected ROC point:', rocPoint);
+    const rocPoint = rocData.reduce((prev, curr) => 
+        Math.abs(curr.threshold - threshold) < Math.abs(prev.threshold - threshold) ? curr : prev
+    );
     
     const precision = rocPoint.tp / (rocPoint.tp + rocPoint.fp) || 0;
     const recall = rocPoint.tpr;
     const f1 = 2 * (precision * recall) / (precision + recall) || 0;
     const accuracy = (rocPoint.tp + rocPoint.tn) / (rocPoint.tp + rocPoint.fp + rocPoint.tn + rocPoint.fn) || 0;
     
-    // Update confusion matrix - FIXED DISPLAY
-    const confusionMatrixHTML = `
+    document.getElementById('confusion-matrix').innerHTML = `
         <h3>Confusion Matrix (Threshold: ${threshold.toFixed(2)})</h3>
-        <div style="background: #f8f9fa; padding: 20px; border-radius: 5px;">
-            <table style="width: 100%; text-align: center; border-collapse: collapse; margin: 0 auto;">
-                <tr>
-                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;"></th>
-                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;">Predicted Negative</th>
-                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;">Predicted Positive</th>
-                </tr>
-                <tr>
-                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;">Actual Negative</th>
-                    <td style="border: 1px solid #ddd; padding: 12px; background: #d4edda;">${rocPoint.tn}</td>
-                    <td style="border: 1px solid #ddd; padding: 12px; background: #f8d7da;">${rocPoint.fp}</td>
-                </tr>
-                <tr>
-                    <th style="border: 1px solid #ddd; padding: 12px; background: #e9ecef;">Actual Positive</th>
-                    <td style="border: 1px solid #ddd; padding: 12px; background: #f8d7da;">${rocPoint.fn}</td>
-                    <td style="border: 1px solid #ddd; padding: 12px; background: #d4edda;">${rocPoint.tp}</td>
-                </tr>
-            </table>
-        </div>
+        <table style="width: 100%; text-align: center; border-collapse: collapse;">
+            <tr>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;"></th>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Predicted Negative</th>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Predicted Positive</th>
+            </tr>
+            <tr>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Actual Negative</th>
+                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.tn}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.fp}</td>
+            </tr>
+            <tr>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Actual Positive</th>
+                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.fn}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.tp}</td>
+            </tr>
+        </table>
     `;
     
-    // Update metrics values - FIXED DISPLAY
-    const metricsHTML = `
+    document.getElementById('metrics-values').innerHTML = `
         <h3>Performance Metrics</h3>
-        <div style="background: #f8f9fa; padding: 20px; border-radius: 5px; margin-top: 20px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #007bff;">
-                    <strong>Accuracy</strong><br>
-                    <span style="font-size: 24px; font-weight: bold; color: #007bff;">${accuracy.toFixed(3)}</span>
-                </div>
-                <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #28a745;">
-                    <strong>Precision</strong><br>
-                    <span style="font-size: 24px; font-weight: bold; color: #28a745;">${precision.toFixed(3)}</span>
-                </div>
-                <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #ffc107;">
-                    <strong>Recall</strong><br>
-                    <span style="font-size: 24px; font-weight: bold; color: #ffc107;">${recall.toFixed(3)}</span>
-                </div>
-                <div style="background: white; padding: 15px; border-radius: 5px; border-left: 4px solid #dc3545;">
-                    <strong>F1-Score</strong><br>
-                    <span style="font-size: 24px; font-weight: bold; color: #dc3545;">${f1.toFixed(3)}</span>
-                </div>
-            </div>
-            <div style="background: white; padding: 15px; border-radius: 5px; margin-top: 15px; border-left: 4px solid #6f42c1;">
-                <strong>AUC (Area Under ROC Curve)</strong><br>
-                <span style="font-size: 24px; font-weight: bold; color: #6f42c1;">${auc.toFixed(3)}</span>
-            </div>
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+            <p><strong>Accuracy:</strong> ${accuracy.toFixed(3)}</p>
+            <p><strong>Precision:</strong> ${precision.toFixed(3)}</p>
+            <p><strong>Recall:</strong> ${recall.toFixed(3)}</p>
+            <p><strong>F1-Score:</strong> ${f1.toFixed(3)}</p>
+            <p><strong>AUC:</strong> ${auc.toFixed(3)}</p>
         </div>
     `;
-    
-    // Update the DOM
-    const confusionMatrixElement = document.getElementById('confusion-matrix');
-    const metricsValuesElement = document.getElementById('metrics-values');
-    
-    if (confusionMatrixElement) {
-        confusionMatrixElement.innerHTML = confusionMatrixHTML;
-    } else {
-        console.error('Confusion matrix element not found');
-    }
-    
-    if (metricsValuesElement) {
-        metricsValuesElement.innerHTML = metricsHTML;
-    } else {
-        console.error('Metrics values element not found');
-    }
-    
-    console.log('Metrics updated successfully');
 }
 
 // Prediction
@@ -827,16 +704,35 @@ async function predictTest() {
         console.log('Making predictions on test data...');
         const testFeatures = testData.processed.features;
         
+        // Check for NaN in test features
+        const testFeaturesArray = testFeatures.arraySync();
+        let testFeaturesNaN = false;
+        for (let i = 0; i < Math.min(3, testFeaturesArray.length); i++) {
+            for (let j = 0; j < testFeaturesArray[i].length; j++) {
+                if (isNaN(testFeaturesArray[i][j])) {
+                    console.error(`NaN in test features at [${i}][${j}]`);
+                    testFeaturesNaN = true;
+                }
+            }
+        }
+        
+        if (testFeaturesNaN) {
+            throw new Error('Test features contain NaN values');
+        }
+        
         const predictions = model.predict(testFeatures);
         const probabilities = predictions.dataSync();
         
+        // Check for NaN in predictions
         const nanCount = probabilities.filter(p => isNaN(p)).length;
+        console.log(`Found ${nanCount} NaN values in predictions`);
         
         testPredictions = {
             identifiers: testData.processed.identifiers,
             probabilities: probabilities
         };
         
+        // Display predictions
         let predictionDisplay = '';
         const displayCount = Math.min(5, probabilities.length);
         
