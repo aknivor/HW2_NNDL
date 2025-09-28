@@ -54,11 +54,11 @@ function readFile(file) {
 
 function parseCSV(csvText) {
     const lines = csvText.trim().split('\n');
-    const headers = lines[0].split(',');
+    const headers = parseCSVLine(lines[0]);
     
     const data = [];
     for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',');
+        const values = parseCSVLine(lines[i]);
         const row = {};
         headers.forEach((header, index) => {
             row[header.trim()] = values[index] ? values[index].trim() : '';
@@ -67,6 +67,40 @@ function parseCSV(csvText) {
     }
     
     return data;
+}
+
+function parseCSVLine(line) {
+    const values = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+        
+        if (char === '"') {
+            // Toggle quote state
+            inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+            // Comma outside quotes - end of field
+            values.push(current);
+            current = '';
+        } else {
+            // Regular character
+            current += char;
+        }
+        
+        // Handle double quotes (escaped quotes in CSV)
+        if (char === '"' && nextChar === '"' && inQuotes) {
+            current += '"';
+            i++; // Skip next quote
+        }
+    }
+    
+    // Push the last field
+    values.push(current);
+    
+    return values;
 }
 
 function displayDataInfo() {
