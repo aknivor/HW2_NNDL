@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Titanic Classifier - TensorFlow.js</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@latest"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { margin: 5px; padding: 8px 15px; cursor: pointer; }
+        input[type="file"] { margin: 5px 0; }
+        .metrics-container { display: flex; flex-wrap: wrap; gap: 20px; }
+        .metrics-panel { flex: 1; min-width: 300px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        @media (max-width: 768px) {
+            .metrics-container { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Titanic Binary Classifier - TensorFlow.js</h1>
+    
+    <!-- Data Load Section -->
+    <section id="data-load">
+        <h2>1. Data Load</h2>
+        <label>Upload Train CSV: </label>
+        <input type="file" id="train-file" accept=".csv">
+        <br>
+        <label>Upload Test CSV: </label>
+        <input type="file" id="test-file" accept=".csv">
+        <br>
+        <button onclick="loadData()">Load & Inspect Data</button>
+        <div id="data-info"></div>
+    </section>
+
+    <!-- Preprocessing Section -->
+    <section id="preprocessing">
+        <h2>2. Preprocessing</h2>
+        <button onclick="preprocessData()">Preprocess Data</button>
+        <div id="preprocess-info"></div>
+    </section>
+
+    <!-- Model Section -->
+    <section id="model">
+        <h2>3. Model</h2>
+        <button onclick="createModel()">Create Model</button>
+        <div id="model-info"></div>
+    </section>
+
+    <!-- Training Section -->
+    <section id="training">
+        <h2>4. Training</h2>
+        <button onclick="trainModel()">Train Model</button>
+        <div id="training-info"></div>
+    </section>
+
+    <!-- Metrics Section -->
+    <section id="metrics">
+        <h2>5. Metrics</h2>
+        <div class="metrics-container">
+            <div class="metrics-panel">
+                <label>Classification Threshold: </label>
+                <input type="range" id="threshold-slider" min="0" max="1" step="0.01" value="0.5" onchange="updateMetrics()">
+                <span id="threshold-value">0.5</span>
+                <div id="confusion-matrix"></div>
+                <div id="metrics-values"></div>
+            </div>
+            <div class="metrics-panel" id="roc-curve"></div>
+        </div>
+    </section>
+
+    <!-- Prediction Section -->
+    <section id="prediction">
+        <h2>6. Prediction</h2>
+        <button onclick="predictTest()">Predict Test Data</button>
+        <div id="prediction-info"></div>
+    </section>
+
+    <!-- Export Section -->
+    <section id="export">
+        <h2>7. Export</h2>
+        <button onclick="exportModel()">Export Model</button>
+        <button onclick="downloadPredictions()">Download Predictions</button>
+    </section>
+
+    <!-- Deployment Notes -->
+    <section id="deployment">
+        <h2>Deployment Notes</h2>
+        <p>Create a public GitHub repository, commit index.html and app.js, enable GitHub Pages (main branch/root folder), and test the URL.</p>
+    </section>
+
+    <script src="app.js"></script>
+</body>
+</html>
