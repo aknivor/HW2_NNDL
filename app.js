@@ -12,8 +12,6 @@ let validationData = null;
 let testPredictions = null;
 let rocData = null;
 let auc = 0;
-let currentValidationPredictions = null;
-let currentValidationLabels = null;
 
 // Data Load & Inspection
 async function loadData() {
@@ -26,18 +24,13 @@ async function loadData() {
     }
 
     try {
-        // Load CSV files
         const trainText = await readFile(trainFile);
         const testText = await readFile(testFile);
         
-        // Parse CSV data
         trainData = parseCSV(trainText);
         testData = parseCSV(testText);
         
-        // Display data info
         displayDataInfo();
-        
-        // Visualize data
         visualizeData();
         
     } catch (error) {
@@ -266,64 +259,64 @@ function preprocessDataset(data, isTraining, stats = null) {
     if (isTraining) {
         console.log('Calculating training statistics...');
         
-        // Extract and clean numeric values
-        const ages = data.map(row => {
+        // Extract numeric values with proper parsing
+        const ages = [];
+        const fares = [];
+        const embarked = [];
+        
+        data.forEach(row => {
+            // Parse Age
             const age = parseFloat(row.Age);
-            return isNaN(age) ? null : age;
-        }).filter(age => age !== null);
-        
-        const fares = data.map(row => {
+            if (!isNaN(age)) ages.push(age);
+            
+            // Parse Fare
             const fare = parseFloat(row.Fare);
-            return isNaN(fare) ? null : fare;
-        }).filter(fare => fare !== null);
-        
-        const embarked = data.map(row => row.Embarked).filter(e => e && e !== '');
+            if (!isNaN(fare)) fares.push(fare);
+            
+            // Parse Embarked
+            if (row.Embarked && row.Embarked.trim() !== '') {
+                embarked.push(row.Embarked);
+            }
+        });
         
         console.log(`Valid ages: ${ages.length}, fares: ${fares.length}, embarked: ${embarked.length}`);
         
         stats = {
             ageMedian: calculateMedian(ages),
-            ageMean: calculateMean(ages),
-            ageStd: calculateStd(ages),
             fareMean: calculateMean(fares),
             fareStd: calculateStd(fares),
             embarkedMode: calculateMode(embarked)
         };
         
         console.log('Training stats:', stats);
-    } else {
-        console.log('Using provided stats:', stats);
     }
     
     const features = [];
     const labels = [];
     const identifiers = [];
-    let validRows = 0;
+    let skippedRows = 0;
     
-    data.forEach((row, index) => {
+    data.forEach((row) => {
         try {
-            // Handle missing values with proper fallbacks
+            // Parse with validation
             let age = parseFloat(row.Age);
             if (isNaN(age)) age = stats.ageMedian || 30;
             
             let fare = parseFloat(row.Fare);
             if (isNaN(fare)) fare = stats.fareMean || 0;
             
-            const embarked = row.Embarked || stats.embarkedMode || 'S';
+            const embarked = (row.Embarked && row.Embarked.trim() !== '') ? row.Embarked : (stats.embarkedMode || 'S');
             
-            // Standardize numerical features
-            const ageStd = stats.ageStd > 0 ? stats.ageStd : 1;
+            // Handle zero standard deviation
             const fareStd = stats.fareStd > 0 ? stats.fareStd : 1;
-            
-            const standardizedAge = (age - stats.ageMean) / ageStd;
             const standardizedFare = (fare - stats.fareMean) / fareStd;
             
             // Create feature vector with validation
             const featureVector = [
-                standardizedAge,
+                age,  // Use raw age instead of standardized
                 standardizedFare,
-                parseFloat(row.SibSp) || 0,
-                parseFloat(row.Parch) || 0,
+                parseInt(row.SibSp) || 0,
+                parseInt(row.Parch) || 0,
                 row.Sex === 'male' ? 1 : 0,
                 row.Sex === 'female' ? 1 : 0,
                 row.Pclass === '1' ? 1 : 0,
@@ -334,38 +327,53 @@ function preprocessDataset(data, isTraining, stats = null) {
                 embarked === 'S' ? 1 : 0
             ];
             
-            // Check for NaN in feature vector
-            const hasNaN = featureVector.some(val => isNaN(val));
-            if (hasNaN) {
-                console.warn(`Row ${index} has NaN values:`, featureVector);
-                return; // Skip this row
+            // Validate feature vector
+            const isValid = featureVector.every(val => {
+                const numVal = Number(val);
+                return !isNaN(numVal) && isFinite(numVal);
+            });
+            
+            if (!isValid) {
+                console.warn('Invalid feature vector:', featureVector);
+                skippedRows++;
+                return;
             }
             
             features.push(featureVector);
-            validRows++;
             
             if (isTraining && row.Survived !== undefined && row.Survived !== '') {
-                labels.push(parseInt(row.Survived));
+                const label = parseInt(row.Survived);
+                if (!isNaN(label)) {
+                    labels.push(label);
+                }
             }
             
             identifiers.push(row.PassengerId);
             
         } catch (error) {
-            console.error(`Error processing row ${index}:`, error);
+            console.error('Error processing row:', error);
+            skippedRows++;
         }
     });
     
-    console.log(`Successfully processed ${validRows} valid rows out of ${data.length}`);
+    console.log(`Processed ${features.length} valid rows, skipped ${skippedRows} rows`);
     
     if (features.length === 0) {
         throw new Error('No valid features found after preprocessing');
     }
     
+    // Create tensors and validate
     const featuresTensor = tf.tensor2d(features);
     const labelsTensor = isTraining && labels.length > 0 ? tf.tensor1d(labels) : null;
     
+    // Check for NaN in tensors
+    const featuresHasNaN = tf.isNaN(featuresTensor).any().dataSync()[0];
+    if (featuresHasNaN) {
+        throw new Error('Features tensor contains NaN values');
+    }
+    
     console.log('Features tensor shape:', featuresTensor.shape);
-    if (labelsTensor) console.log('Labels tensor shape:', labelsTensor.shape);
+    console.log('Features sample:', featuresTensor.arraySync().slice(0, 2));
     
     return {
         features: featuresTensor,
@@ -382,9 +390,9 @@ function displayPreprocessInfo(trainProcessed, testProcessed) {
         <h3>Preprocessing Complete</h3>
         <p><strong>Processed Train Features Shape:</strong> ${trainProcessed.features.shape}</p>
         <p><strong>Processed Test Features Shape:</strong> ${testProcessed.features.shape}</p>
-        <p><strong>Valid Features:</strong> ${trainProcessed.features.shape[1]}</p>
-        <p><strong>Age Stats:</strong> Mean=${trainProcessed.stats.ageMean.toFixed(2)}, Std=${trainProcessed.stats.ageStd.toFixed(2)}, Median=${trainProcessed.stats.ageMedian.toFixed(2)}</p>
-        <p><strong>Fare Stats:</strong> Mean=${trainProcessed.stats.fareMean.toFixed(2)}, Std=${trainProcessed.stats.fareStd.toFixed(2)}</p>
+        <p><strong>Age Median:</strong> ${trainProcessed.stats.ageMedian.toFixed(2)}</p>
+        <p><strong>Fare Mean:</strong> ${trainProcessed.stats.fareMean.toFixed(2)}</p>
+        <p><strong>Fare Std:</strong> ${trainProcessed.stats.fareStd.toFixed(2)}</p>
         <p><strong>Embarked Mode:</strong> ${trainProcessed.stats.embarkedMode}</p>
     `;
 }
@@ -405,8 +413,7 @@ function createModel() {
                 tf.layers.dense({
                     inputShape: [inputDim],
                     units: 16,
-                    activation: 'relu',
-                    kernelInitializer: 'glorotNormal'
+                    activation: 'relu'
                 }),
                 tf.layers.dense({
                     units: 1,
@@ -416,7 +423,7 @@ function createModel() {
         });
         
         model.compile({
-            optimizer: tf.train.adam(0.001),
+            optimizer: 'adam',
             loss: 'binaryCrossentropy',
             metrics: ['accuracy']
         });
@@ -461,8 +468,6 @@ async function trainModel() {
         validationData = [xVal, yVal];
         
         console.log('Starting training...');
-        console.log('Training data shape:', xTrain.shape, yTrain.shape);
-        console.log('Validation data shape:', xVal.shape, yVal.shape);
         
         trainingHistory = await model.fit(xTrain, yTrain, {
             epochs: 50,
@@ -475,12 +480,12 @@ async function trainModel() {
             )
         });
         
-        // Store validation predictions for ROC calculation
+        // Calculate ROC
         const valPredictions = model.predict(xVal);
-        currentValidationPredictions = valPredictions.dataSync();
-        currentValidationLabels = yVal.dataSync();
+        const valProbs = valPredictions.dataSync();
+        const valLabels = yVal.dataSync();
         
-        calculateROC();
+        calculateROC(valProbs, valLabels);
         updateMetrics();
         
         document.getElementById('training-info').innerHTML = 
@@ -534,12 +539,7 @@ function prepareTrainingData() {
     return { xTrain, yTrain, xVal, yVal };
 }
 
-function calculateROC() {
-    if (!currentValidationPredictions || !currentValidationLabels) {
-        console.log('No validation data available for ROC calculation');
-        return;
-    }
-
+function calculateROC(predictions, trueLabels) {
     console.log('Calculating ROC...');
     
     const thresholds = Array.from({length: 101}, (_, i) => i / 100);
@@ -548,9 +548,9 @@ function calculateROC() {
     thresholds.forEach(threshold => {
         let tp = 0, fp = 0, tn = 0, fn = 0;
         
-        for (let i = 0; i < currentValidationPredictions.length; i++) {
-            const pred = currentValidationPredictions[i] >= threshold ? 1 : 0;
-            const actual = currentValidationLabels[i];
+        for (let i = 0; i < predictions.length; i++) {
+            const pred = predictions[i] >= threshold ? 1 : 0;
+            const actual = trueLabels[i];
             
             if (pred === 1 && actual === 1) tp++;
             else if (pred === 1 && actual === 0) fp++;
@@ -605,21 +605,21 @@ function updateMetrics() {
     
     document.getElementById('confusion-matrix').innerHTML = `
         <h3>Confusion Matrix (Threshold: ${threshold.toFixed(2)})</h3>
-        <table style="width: 100%; text-align: center;">
+        <table style="width: 100%; text-align: center; border-collapse: collapse;">
             <tr>
-                <th></th>
-                <th style="background: #f0f0f0; padding: 10px;">Predicted Negative</th>
-                <th style="background: #f0f0f0; padding: 10px;">Predicted Positive</th>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;"></th>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Predicted Negative</th>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Predicted Positive</th>
             </tr>
             <tr>
-                <th style="background: #f0f0f0; padding: 10px;">Actual Negative</th>
-                <td style="border: 1px solid #ddd; padding: 10px; background: #e8f5e8;">${rocPoint.tn}</td>
-                <td style="border: 1px solid #ddd; padding: 10px; background: #ffebee;">${rocPoint.fp}</td>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Actual Negative</th>
+                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.tn}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.fp}</td>
             </tr>
             <tr>
-                <th style="background: #f0f0f0; padding: 10px;">Actual Positive</th>
-                <td style="border: 1px solid #ddd; padding: 10px; background: #ffebee;">${rocPoint.fn}</td>
-                <td style="border: 1px solid #ddd; padding: 10px; background: #e8f5e8;">${rocPoint.tp}</td>
+                <th style="border: 1px solid #ddd; padding: 8px; background: #f2f2f2;">Actual Positive</th>
+                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.fn}</td>
+                <td style="border: 1px solid #ddd; padding: 8px;">${rocPoint.tp}</td>
             </tr>
         </table>
     `;
@@ -647,37 +647,38 @@ async function predictTest() {
         console.log('Making predictions on test data...');
         const testFeatures = testData.processed.features;
         
-        // Verify test features
-        const testFeaturesArray = testFeatures.arraySync();
-        console.log('Test features sample:', testFeaturesArray.slice(0, 2));
+        // Verify test features don't contain NaN
+        const featuresHasNaN = tf.isNaN(testFeatures).any().dataSync()[0];
+        if (featuresHasNaN) {
+            throw new Error('Test features contain NaN values');
+        }
         
         const predictions = model.predict(testFeatures);
         const probabilities = predictions.dataSync();
         
-        console.log('Raw predictions:', probabilities.slice(0, 10));
-        
-        // Check for NaN values
+        // Check for NaN in predictions
+        const validPredictions = probabilities.map(prob => isNaN(prob) ? 0 : prob);
         const nanCount = probabilities.filter(p => isNaN(p)).length;
+        
         if (nanCount > 0) {
-            console.error(`Found ${nanCount} NaN predictions`);
-            alert(`Warning: ${nanCount} predictions are invalid (NaN). Check data preprocessing.`);
+            console.warn(`Found ${nanCount} NaN predictions, replaced with 0`);
         }
         
         testPredictions = {
             identifiers: testData.processed.identifiers,
-            probabilities: probabilities
+            probabilities: validPredictions
         };
         
-        // Display first 5 valid predictions
-        const validPredictions = probabilities.slice(0, 5).map((prob, i) => 
-            `<li>Passenger ${testPredictions.identifiers[i]}: ${isNaN(prob) ? 'INVALID' : prob.toFixed(3)}</li>`
+        // Display first 5 predictions
+        const predictionDisplay = validPredictions.slice(0, 5).map((prob, i) => 
+            `<li>Passenger ${testPredictions.identifiers[i]}: ${prob.toFixed(3)}</li>`
         ).join('');
         
         document.getElementById('prediction-info').innerHTML = `
-            <p><strong>Predictions generated for ${probabilities.length} test samples</strong></p>
-            <p><strong>Invalid predictions (NaN):</strong> ${nanCount}</p>
+            <p><strong>Predictions generated for ${validPredictions.length} test samples</strong></p>
+            ${nanCount > 0 ? `<p style="color: red;"><strong>Warning:</strong> ${nanCount} invalid predictions were replaced with 0</p>` : ''}
             <p>First 5 predictions:</p>
-            <ul>${validPredictions}</ul>
+            <ul>${predictionDisplay}</ul>
         `;
         
     } catch (error) {
@@ -712,13 +713,13 @@ function downloadPredictions() {
         const threshold = parseFloat(document.getElementById('threshold-slider').value);
         
         testPredictions.probabilities.forEach((prob, i) => {
-            const survived = (!isNaN(prob) && prob >= threshold) ? 1 : 0;
+            const survived = prob >= threshold ? 1 : 0;
             submissionCSV += `${testPredictions.identifiers[i]},${survived}\n`;
         });
         
         let probabilitiesCSV = 'PassengerId,Probability\n';
         testPredictions.probabilities.forEach((prob, i) => {
-            probabilitiesCSV += `${testPredictions.identifiers[i]},${isNaN(prob) ? '0.0000' : prob.toFixed(4)}\n`;
+            probabilitiesCSV += `${testPredictions.identifiers[i]},${prob.toFixed(4)}\n`;
         });
         
         downloadFile(submissionCSV, 'submission.csv', 'text/csv');
